@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+.venv/
+.data/
+.cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+node_modules/
+frontend/dist/
+output/
+*.log
+frontend/*.tsbuildinfo
+.playwright-cli/
