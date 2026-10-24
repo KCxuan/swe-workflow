@@ -5,7 +5,8 @@ import os
 from dotenv import dotenv_values
 
 ROOT = Path(__file__).resolve().parents[2]
-os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".cache" / "browsers"))
+LOCAL_HOME = Path(os.environ.get("SWE_WORKFLOW_HOME", str(ROOT.with_name(ROOT.name + "-local")))).expanduser().resolve()
+os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(LOCAL_HOME / ".cache" / "browsers"))
 
 
 @dataclass
@@ -20,11 +21,11 @@ class Settings:
 
     @property
     def data(self) -> Path:
-        return self.root / ".data"
+        return (LOCAL_HOME if self.root.resolve() == ROOT else self.root) / ".data"
 
     @classmethod
     def load(cls):
-        values = {**dotenv_values(ROOT / ".env"), **os.environ}
+        values = {**dotenv_values(LOCAL_HOME / ".env"), **os.environ}
         return cls(api_key=values.get("ANTHROPIC_API_KEY", ""),
                    base_url=values.get("ANTHROPIC_BASE_URL", ""),
                    model=values.get("ANTHROPIC_MODEL", "deepseek-flash"),

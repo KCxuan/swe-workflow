@@ -79,18 +79,12 @@ class ReviewReport(BaseModel):
     issues: list[str] = Field(default_factory=list)
 
 
-class ProjectInput(BaseModel):
-    path: str
-    name: str = "新项目"
-
-
 class RunInput(BaseModel):
+    path: str
+    mode: Literal["new", "modify"] = "new"
     request: str = Field(min_length=1, max_length=30000)
 
 
 class DecisionInput(BaseModel):
-    kind: Literal["confirm", "revise", "continue", "end"]
-    expected_revision: int
-    decision_id: str = Field(min_length=1, max_length=100)
-    feedback: str = ""
+    kind: Literal["confirm", "end"]
     plan: RequirementPlan | None = None

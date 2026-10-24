@@ -11,7 +11,6 @@ from langchain.tools import tool
 from pydantic import BaseModel
 from backend.app.config import Settings
 from backend.app.agents import Agents
-from backend.app.store import Store
 from backend.app.tools import ToolContext, Processes
 
 
@@ -22,8 +21,7 @@ class Answer(BaseModel):
 async def command_probe(settings):
     root = settings.data / "protocol-probe" / "project"
     root.mkdir(parents=True, exist_ok=True)
-    store = Store(settings.data / "protocol-probe" / "probe.db")
-    ctx = ToolContext(root, "protocol-probe", settings, Processes(store, settings), lambda *args: None)
+    ctx = ToolContext(root, "protocol-probe", settings, Processes(settings), lambda *args: None)
     try:
         command = next(t for t in ctx.tools("coder") if t.name == "run_command")
         agent = create_agent(Agents(settings).model().bind(max_tokens=1000), tools=[command],
@@ -36,7 +34,6 @@ async def command_probe(settings):
         return {"passed": valid and output["structured_response"].result == 42, "actual_command_results": [e["details"] for e in evidence]}
     finally:
         await ctx.close()
-        store.close()
 
 
 async def main():

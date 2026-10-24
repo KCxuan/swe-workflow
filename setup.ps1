@@ -1,29 +1,34 @@
 param([string]$Python = 'python')
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
+. (Join-Path $PSScriptRoot 'runtime.ps1')
+$taskHome = Get-WorkflowHome
+New-Item -ItemType Directory -Path $taskHome -Force | Out-Null
+$taskPython = Join-Path $taskHome '.venv/Scripts/python.exe'
 
 function Check-Exit([string]$Step) {
     if ($LASTEXITCODE -ne 0) { throw "$Step failed (exit $LASTEXITCODE)." }
 }
 
-if (-not (Get-Command node -ErrorAction SilentlyContinue)) { throw 'Install Node.js 20.19+ or 22.12+ first.' }
-if (-not (Test-Path -LiteralPath '.venv/Scripts/python.exe')) {
-    & $Python -m venv .venv
+if (-not (Test-Path -LiteralPath $taskPython)) {
+    & $Python -m venv (Join-Path $taskHome '.venv')
     Check-Exit 'Create Python environment'
 }
-& ./.venv/Scripts/python.exe -m pip install -r requirements.txt
+& $taskPython -m pip install -r requirements.txt
 Check-Exit 'Install Python dependencies'
-$env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $PSScriptRoot '.cache/browsers'
-& ./.venv/Scripts/python.exe -m playwright install chromium
+& $taskPython -m playwright install chromium --only-shell
 Check-Exit 'Install Chromium'
-Push-Location -LiteralPath frontend
-try {
-    & npm.cmd ci
-    Check-Exit 'Install frontend dependencies'
-    & npm.cmd run build
-    Check-Exit 'Build workbench'
-} finally { Pop-Location }
-if (-not (Test-Path -LiteralPath '.env')) {
-    Copy-Item -LiteralPath '.env.example' -Destination '.env'
+if (-not (Test-Path -LiteralPath 'frontend/dist/index.html')) {
+    if (-not (Get-Command node -ErrorAction SilentlyContinue)) { throw 'Install Node.js 20.19+ or 22.12+ to build the frontend.' }
+    Push-Location -LiteralPath frontend
+    try {
+        & npm.cmd ci
+        Check-Exit 'Install frontend dependencies'
+        & npm.cmd run build
+        Check-Exit 'Build workbench'
+    } finally { Pop-Location }
 }
-Write-Host 'Setup complete. Configure .env, then run: .\start.ps1'
+if (-not (Test-Path -LiteralPath (Join-Path $taskHome '.env'))) {
+    Copy-Item -LiteralPath '.env.example' -Destination (Join-Path $taskHome '.env')
+}
+Write-Host "Setup complete. Configure $taskHome\.env, then run: .\start.ps1"

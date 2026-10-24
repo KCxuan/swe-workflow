@@ -8,6 +8,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import uuid
 from urllib.parse import urlparse
 
 import httpx
@@ -16,10 +17,13 @@ from langchain.tools import tool
 from playwright.async_api import async_playwright
 
 from .models import CommandSpec, CodingResult
-from .store import uid
 
-IGNORED = {".venv", "venv", "node_modules", ".git", "__pycache__", "dist", "build", ".pytest_cache"}
+IGNORED = {".venv", "venv", "node_modules", ".git", "__pycache__", "dist", "build", ".pytest_cache", ".workflow"}
 SOURCE = {".py", ".js", ".ts", ".tsx", ".jsx", ".html", ".css", ".toml", ".yaml", ".yml", ".sql"}
+
+
+def uid():
+    return uuid.uuid4().hex
 
 
 def safe_path(root: Path, relative: str) -> Path:
@@ -83,8 +87,8 @@ def child_env():
 
 
 class Processes:
-    def __init__(self, store, settings):
-        self.store, self.settings = store, settings
+    def __init__(self, settings):
+        self.settings = settings
         self.services = {}
 
     async def kill(self, proc):
@@ -126,17 +130,13 @@ class Processes:
             raise
         return {"exit_code": proc.returncode, "output": self.settings.redact(b"".join(chunks).decode("utf-8", errors="replace"))}
 
-    async def stop_all(self, project_id=None):
+    async def stop_all(self):
         for name, service in list(self.services.items()):
-            if project_id and service["project_id"] != project_id:
-                continue
             await self.kill(service["proc"])
             await asyncio.gather(service["reader"], return_exceptions=True)
-            with self.store.conn:
-                self.store.conn.execute("DELETE FROM services WHERE id=?", (service["id"],))
             self.services.pop(name, None)
 
-    async def start(self, project_id, run_id, root, coding: CodingResult, emit):
+    async def start(self, root, coding: CodingResult, emit):
         await self.stop_all()
         urls = {}
         try:
@@ -147,16 +147,13 @@ class Processes:
                         raise RuntimeError(f"端口 {spec.port} 已被占用，请更换端口")
                 proc = await asyncio.create_subprocess_exec(*argv, cwd=cwd, env=child_env(),
                            stdin=subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
-                item = {"id": uid(), "proc": proc, "logs": [], "spec": spec, "project_id": project_id}
+                item = {"proc": proc, "logs": [], "spec": spec}
                 async def drain(entry):
                     while block := await entry["proc"].stdout.read(4096):
                         entry["logs"].append(block.decode("utf-8", errors="replace"))
                         entry["logs"] = entry["logs"][-200:]
                 item["reader"] = asyncio.create_task(drain(item))
                 self.services[spec.name] = item
-                with self.store.conn:
-                    self.store.conn.execute("INSERT INTO services VALUES(?,?,?,?,?,?)", (item["id"], project_id, run_id,
-                       proc.pid, psutil.Process(proc.pid).create_time(), spec.model_dump_json()))
                 url = f"http://127.0.0.1:{spec.port}"
                 ready = False
                 async with httpx.AsyncClient(trust_env=False) as client:
@@ -181,25 +178,11 @@ class Processes:
             await self.stop_all()
             raise
 
-    def recover_orphans(self):
-        for row in self.store.conn.execute("SELECT pid,started FROM services").fetchall():
-            try:
-                p = psutil.Process(row[0])
-                if abs(p.create_time() - row[1]) < .1:
-                    for child in p.children(recursive=True):
-                        child.kill()
-                    p.kill()
-            except psutil.Error:
-                pass
-        with self.store.conn:
-            self.store.conn.execute("DELETE FROM services")
-
-
 class ToolContext:
-    def __init__(self, root, run_id, settings, processes, emit):
+    def __init__(self, root, run_id, settings, processes, emit, artifacts=None):
         self.root, self.run_id = root.resolve(), run_id
         self.settings, self.processes, self.emit = settings, processes, emit
-        self.artifacts = settings.data / "runs" / run_id
+        self.artifacts = Path(artifacts) if artifacts is not None else settings.data / "checks" / run_id
         self.artifacts.mkdir(parents=True, exist_ok=True)
         self.evidence = {}
         self.review_hash = ""

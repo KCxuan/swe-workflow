@@ -13,3 +13,4 @@ output/
 *.log
 frontend/*.tsbuildinfo
 .playwright-cli/
+submission/
