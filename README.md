@@ -2,7 +2,7 @@
 
 输入需求，确认方案，由三个 Agent 依次完成编码和实际检查。生成的源码直接保存在用户选择的本地文件夹中，工作台展示协作进度、应用预览、源码与逐项验收报告。
 
-本项目独立实现，**不导入或调用 `D:\Agent` 的 CodingAgent**。LangGraph 控制角色交接与人工等待，角色内部使用 LangChain `create_agent` 调用模型和工具。
+本项目独立实现。LangGraph 控制角色交接与人工等待，角色内部使用 LangChain `create_agent` 调用模型和工具。
 
 ![工作台与生成应用同屏](docs/images/workbench.png)
 
